@@ -1,0 +1,116 @@
+
+
+#include <ESP8266WiFi.h>
+
+void send_event(const char *event);
+const char *ssid     = "Your wifi name";
+const char *password = "your password";
+const char *host = "maker.ifttt.com";
+const char *privateKey = "your key";
+const int buttonPin = D2;     
+const int ledPin = D3;       
+int buttonState;            
+int lastButtonState = LOW;   
+long lastDebounceTime = 0;  
+long debounceDelay = 50;    
+
+void setup() 
+{
+  pinMode(buttonPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+  
+  
+  Serial.begin(115200);
+  delay(10);
+
+  Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  int led = HIGH;  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(200);
+    digitalWrite(ledPin, led);
+    led = !led;
+  }
+  digitalWrite(ledPin, LOW);
+
+  Serial.println("");
+  Serial.println("WiFi connected");  
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() 
+{
+  int reading = digitalRead(buttonPin);
+  if (reading != lastButtonState) {
+     lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) 
+  {
+    if (reading != buttonState) 
+    {
+      Serial.print("Button now ");
+      Serial.println(HIGH == reading ? "HIGH" : "LOW");
+      buttonState = reading;
+
+      if (buttonState == LOW) {
+        send_event("led_state");
+      }
+    }
+  }
+  lastButtonState = reading;
+}
+
+void send_event(const char *event)
+{
+
+  digitalWrite(ledPin, HIGH);
+
+  Serial.print("Connecting to ");
+  Serial.println(host);
+  
+  WiFiClient client;
+  const int httpPort = 80;
+  if (!client.connect(host, httpPort)) {
+    Serial.println("Connection failed");
+    return;
+  }
+  
+  String url = "/trigger/";
+  url += event;
+  url += "/with/key/";
+  url += privateKey;
+  
+  Serial.print("Requesting URL: ");
+  Serial.println(url);
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" + 
+                "value1=" + buttonState + "\r\n"
+               "Connection: close\r\n\r\n");
+
+  while(client.connected())
+  {
+    if(client.available())
+    {
+      String line = client.readStringUntil('\r');
+      Serial.print(line);
+    } else {
+      delay(50);
+    };
+  }
+  
+  Serial.println();
+  Serial.println("closing connection");
+
+  client.stop();
+  
+  digitalWrite(ledPin, LOW);
+}
